@@ -10,6 +10,7 @@ namespace Controller\Api;
 
 
 use Controller;
+use lib\Config;
 use Model\Pathfinder;
 use Exception;
 
@@ -119,6 +120,7 @@ class User extends Controller\Controller{
         $cookieName = (string)$data['cookie'];
 
         $return = (object) [];
+        $return->ccpImageServer = Config::getPathfinderData('api.ccp_image_server');
         $return->error = [];
 
         if( !empty($cookieData = $this->getCookieByName($cookieName) )){
@@ -128,7 +130,7 @@ class User extends Controller\Controller{
                 // character is valid and allowed to login
                 $return->character = reset($characters)->getData();
                 // get Session status for character
-                if($activeCharacter = $this->getCharacter()){
+                if($activeCharacter = $this->getCharacter(0)){
                     if($activeUser = $activeCharacter->getUser()){
                         if($sessionCharacterData = $activeUser->findSessionCharacterData($return->character->id)){
                             $return->character->hasActiveSession = true;

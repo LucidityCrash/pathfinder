@@ -81,7 +81,7 @@ class Sso extends Api\User{
 
             // check if character is valid and exists
             if(
-                !$character->dry() &&
+                $character->valid() &&
                 $character->hasUserCharacter() &&
                 ($activeCharacter->getUser()->_id === $character->getUser()->_id)
             ){
@@ -217,9 +217,9 @@ class Sso extends Api\User{
                                     $characterModel = $characterModel->updateLog();
 
                                     // connect character with current user
-                                    if( is_null($user = $this->getUser()) ){
+                                    if(is_null($user = $this->getUser())){
                                         // connect character with existing user (no changes)
-                                        if( is_null( $user = $characterModel->getUser()) ){
+                                        if(is_null($user = $characterModel->getUser())){
                                             // no user found (new character) -> create new user and connect to character
                                             /**
                                              * @var $user Pathfinder\UserModel
@@ -234,7 +234,7 @@ class Sso extends Api\User{
                                      * @var $userCharactersModel Pathfinder\UserCharacterModel
                                      */
                                     if( is_null($userCharactersModel = $characterModel->userCharacter) ){
-                                        $userCharactersModel = Pathfinder\AbstractPathfinderModel::getNew('UserCharacterModel');
+                                        $userCharactersModel = $characterModel->rel('userCharacter');
                                         $userCharactersModel->characterId = $characterModel;
                                     }
 
@@ -468,7 +468,7 @@ class Sso extends Api\User{
                      */
                     $corporation = Pathfinder\AbstractPathfinderModel::getNew('CorporationModel');
                     $corporation->getById($corporationId, 0);
-                    if( !$corporation->dry() ){
+                    if($corporation->valid()){
                         $characterData->corporation = $corporation;
                     }
                 }
@@ -479,7 +479,7 @@ class Sso extends Api\User{
                      */
                     $alliance = Pathfinder\AbstractPathfinderModel::getNew('AllianceModel');
                     $alliance->getById($allianceId, 0);
-                    if( !$alliance->dry() ){
+                    if($alliance->valid()){
                         $characterData->alliance = $alliance;
                     }
                 }

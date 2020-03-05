@@ -12,8 +12,15 @@ use Model;
 
 class Universe extends AbstractCron {
 
+    /**
+     * log text
+     */
     const LOG_TEXT = '%s type: %s  %s/%s peak: %s  total: %s  msg: %s';
 
+    /**
+     * log text
+     */
+    const LOG_TEXT_SOV_FW = ', %4s changes → [%4s sovChanges, %4s fwChanges], msg: %s';
 
     /**
      * format counter for output (min length)
@@ -133,10 +140,11 @@ class Universe extends AbstractCron {
      * @param float $timeTotalStart
      */
     private function echoLoaded(int $importCount, int $id, float $timeLoopStart, float $timeTotalStart){
+        $time = microtime(true);
         echo '[' . date('H:i:s') . '] loaded          ' . str_pad('', strlen($importCount), ' ') . '  id: ' . $this->formatIdValue($id)  .
             '  memory: ' . $this->formatMemoryValue(memory_get_usage()) .
-            '  time: ' . $this->formatSeconds(microtime(true) - $timeLoopStart) .
-            '  total: ' . $this->formatSeconds(microtime(true) - $timeTotalStart) . PHP_EOL;
+            '  time: ' . $this->formatSeconds($time - $timeLoopStart) .
+            '  total: ' . $this->formatSeconds($time - $timeTotalStart) . PHP_EOL;
         $this->echoFlush();
     }
 
@@ -169,8 +177,8 @@ class Universe extends AbstractCron {
         $msg = '';
 
         $ids = [];
+        $importCount = 0;
         $count = 0;
-        $importCount = [];
         $modelClass = '';
         $setupModel = function(Model\Universe\AbstractUniverseModel &$model, int $id){};
 
@@ -193,12 +201,51 @@ class Universe extends AbstractCron {
                     $model->loadStargatesData();
                 };
                 break;
+            case 'station':
+                $ids = $f3->ccpClient()->getUniverseSystems();
+                $modelClass = 'SystemModel';
+                $setupModel = function(Model\Universe\SystemModel &$model, int $id){
+                    if($model->getById($id)){
+                        $model->loadStationsData();
+                    }else{
+                        echo 'NOT VALID ' . $id . PHP_EOL;
+                        die();
+                    }
+                };
+                break;
+            case 'sovereignty':
+                // load sovereignty map data. Systems must be present first!
+                $sovData = $f3->ccpClient()->getSovereigntyMap();
+                $ids = !empty($sovData = $sovData['map']) ? array_keys($sovData): [];
+                $modelClass = 'SystemModel';
+                $setupModel = function(Model\Universe\SystemModel &$model, int $id) use ($sovData) {
+                    if($model->getById($id)){
+                        $model->updateSovereigntyData($sovData[$id]);
+                    }else{
+                        echo 'NOT VALID ' . $id . PHP_EOL;
+                        die();
+                    }
+                };
+                break;
+            case 'faction_war_systems':
+                $fwSystems = $f3->ccpClient()->getFactionWarSystems();
+                $ids = !empty($fwSystems = $fwSystems['systems']) ? array_keys($fwSystems): [];
+                $modelClass = 'SystemModel';
+                $setupModel = function(Model\Universe\SystemModel &$model, int $id) use ($fwSystems) {
+                    if($model->getById($id)){
+                        $model->updateFactionWarData($fwSystems[$id]);
+                    }else{
+                        echo 'NOT VALID ' . $id . PHP_EOL;
+                        die();
+                    }
+                };
+                break;
             case 'index_system':
                 // setup system index, Systems must be present first!
                 $ids = $f3->ccpClient()->getUniverseSystems();
                 $modelClass = 'SystemModel';
                 $setupModel = function(Model\Universe\SystemModel &$model, int $id){
-                    $model->getById($id); // no loadById() here! would take "forever" when system not exists and build up first...
+                    $model->getById($id); // no loadById() here! would take "forever" when system not exists and must be build up first...
                     $model->buildIndex();
                 };
                 break;
@@ -216,6 +263,7 @@ class Universe extends AbstractCron {
             sort($ids, SORT_NUMERIC);
             $ids = array_slice($ids, $offset, $length);
             $importCount = count($ids);
+            $count = 0;
 
             $this->echoInfo($total, $offset, $importCount, $ids);
             $this->echoStart();
@@ -237,9 +285,87 @@ class Universe extends AbstractCron {
 
         // Log --------------------------------------------------------------------------------------------------------
         $log = new \Log('cron_' . __FUNCTION__ . '.log');
-        $log->write( sprintf(self::LOG_TEXT, __FUNCTION__, $type,
+        $log->write(sprintf(self::LOG_TEXT, __FUNCTION__, $type,
             $this->formatCounterValue($count), $importCount, $this->formatMemoryValue(memory_get_peak_usage ()),
-            $this->formatSeconds(microtime(true) - $timeTotalStart), $msg) );
+            $this->formatSeconds(microtime(true) - $timeTotalStart), $msg));
+    }
+
+    /**
+     * update Sovereignty system data from ESI
+     * -> this updates Faction warfare data as well
+     * >> php index.php "/cron/updateSovereigntyData"
+     * @param \Base $f3
+     * @throws \Exception
+     */
+    function updateSovereigntyData(\Base $f3){
+        $this->logStart(__FUNCTION__);
+        $params = $this->getParams(__FUNCTION__);
+
+        $timeTotalStart = microtime(true);
+        $msg = '';
+
+        /**
+         * @var $system Model\Universe\SystemModel
+         */
+        $system = Model\Universe\AbstractUniverseModel::getNew('SystemModel');
+
+        $sovData = $f3->ccpClient()->getSovereigntyMap();
+        $fwSystems = $f3->ccpClient()->getFactionWarSystems();
+        $fwSystems = $fwSystems['systems'];
+        $ids = !empty($sovData = $sovData['map']) ? array_keys($sovData): [];
+        sort($ids, SORT_NUMERIC);
+
+        $total = count($ids);
+        $offset = ($params['offset'] > 0 && $params['offset'] < $total) ? $params['offset'] : 0;
+        $ids = array_slice($ids, $offset, $params['length']);
+        $importCount = count($ids);
+        $count = 0;
+
+        $changes = [];
+        foreach($ids as $id){
+            // skip wormhole systems -> can not have sov data
+            // -> even though they are returned from sovereignty/map endpoint?!
+            if(
+                $system->getById($id, 0) &&
+                strpos($system->security, 'C') === false
+            ){
+                if($changedSovData = $system->updateSovereigntyData($sovData[$id])){
+                    $changes['sovereignty'][] = $id;
+                }
+
+                $changedFwData = false;
+                if(is_array($fwSystems[$id])){
+                    if($changedFwData = $system->updateFactionWarData($fwSystems[$id])){
+                        $changes['factionWarfare'][] = $id;
+                    }
+                }
+
+                if($changedSovData || $changedFwData){
+                    $system->buildIndex();
+                }
+            }
+            $system->reset();
+
+            $count++;
+
+            // stop loop if runtime gets close to "max_execution_time"
+            // -> we need some time for writing *.log file
+            if(!$this->isExecutionTimeLeft($timeTotalStart)){
+                $msg = 'Script execution stopped due to "max_execution_time" limit reached';
+                break;
+            }
+        }
+
+        $changedIds = array_reduce($changes, function(array $reducedIds, array $changedIds) : array {
+            return array_unique(array_merge($reducedIds, $changedIds));
+        }, []);
+
+        // Log --------------------------------------------------------------------------------------------------------
+        $text = sprintf(self::LOG_TEXT_SOV_FW,
+            count($changedIds), count($changes['sovereignty'] ? : []), count($changes['factionWarfare'] ? : []),
+            $msg);
+
+        $this->logEnd(__FUNCTION__, $total, $count, $importCount, $offset, $text);
     }
 
     /**
@@ -250,15 +376,20 @@ class Universe extends AbstractCron {
      * @throws \Exception
      */
     function updateUniverseSystems(\Base $f3){
-        $this->setMaxExecutionTime();
-
-        $system = Model\Universe\AbstractUniverseModel::getNew('SystemModel');
-        $systems = $system->find( null, ['order' => 'updated', 'limit' => 2]);
+        $this->logStart(__FUNCTION__);
+        /**
+         * @var $systemModel Model\Universe\SystemModel
+         * @var $system Model\Universe\SystemModel
+         */
+        $systemModel = Model\Universe\AbstractUniverseModel::getNew('SystemModel');
+        $systems = $systemModel->find( null, ['order' => 'updated', 'limit' => 2]);
         if($systems){
             foreach ($systems as $system){
                 $system->updateModel();
             }
         }
+
+        $this->logEnd(__FUNCTION__);
     }
 
 }

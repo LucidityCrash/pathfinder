@@ -88,6 +88,12 @@ define([
         return cachedData;
     };
 
+    /**
+     * @param mapIds
+     * @param sourceName
+     * @param targetName
+     * @returns {string}
+     */
     let getRouteDataCacheKey = (mapIds, sourceName, targetName) => {
         return [mapIds.join('_'), sourceName.toLowerCase(), targetName.toLowerCase()].join('###');
     };
@@ -245,8 +251,7 @@ define([
      * show route dialog. User can search for systems and jump-info for each system is added to a data table
      * @param dialogData
      */
-    let showFindRouteDialog = (dialogData) => {
-
+    let showFindRouteDialog = dialogData => {
         let mapSelectOptions = [];
         let currentMapData = Util.getCurrentMapData();
         if(currentMapData !== false){
@@ -548,12 +553,12 @@ define([
      * set event observer for route finder dialog
      * @param routeDialog
      */
-    let setDialogObserver = (routeDialog) => {
-        let wormholeCheckbox = routeDialog.find('input[type="checkbox"][name="wormholes"]');
-        let wormholeReducedCheckbox = routeDialog.find('input[type="checkbox"][name="wormholesReduced"]');
-        let wormholeCriticalCheckbox = routeDialog.find('input[type="checkbox"][name="wormholesCritical"]');
-        let wormholeEolCheckbox = routeDialog.find('input[type="checkbox"][name="wormholesEOL"]');
-        let wormholeSizeSelect = routeDialog.find('#' + config.routeDialogSizeSelectId);
+    let setDialogObserver = routeDialog => {
+        let wormholeCheckbox            = routeDialog.find('input[type="checkbox"][name="wormholes"]');
+        let wormholeReducedCheckbox     = routeDialog.find('input[type="checkbox"][name="wormholesReduced"]');
+        let wormholeCriticalCheckbox    = routeDialog.find('input[type="checkbox"][name="wormholesCritical"]');
+        let wormholeEolCheckbox         = routeDialog.find('input[type="checkbox"][name="wormholesEOL"]');
+        let wormholeSizeSelect          = routeDialog.find('#' + config.routeDialogSizeSelectId);
 
         // store current "checked" state for each box ---------------------------------------------
         let storeCheckboxStatus = function(){
@@ -756,7 +761,7 @@ define([
         let flagButton = '<i class="fas ' + ['fa-shield-alt', 'txt-color', flagButtonClass].join(' ') + '"></i>';
         let reloadButton = '<i class="fas ' + ['fa-sync'].join(' ') + '"></i>';
         let searchButton = '<i class="fas ' + ['fa-search'].join(' ') + '"></i>';
-        let deleteButton = '<i class="fas ' + ['fa-times', 'txt-color', 'txt-color-redDarker'].join(' ') + '"></i>';
+        let deleteButton = '<i class="fas ' + ['fa-times', 'txt-color', 'txt-color-redDark'].join(' ') + '"></i>';
 
         // default row data (e.g. no route found)
         let tableRowData = {
@@ -1127,15 +1132,11 @@ define([
                         let tempTableElement = this;
 
                         let confirmationSettings = {
-                            container: 'body',
-                            placement: 'left',
-                            btnCancelClass: 'btn btn-sm btn-default',
-                            btnCancelLabel: 'cancel',
-                            btnCancelIcon: 'fas fa-fw fa-ban',
                             title: 'delete route',
-                            btnOkClass: 'btn btn-sm btn-danger',
-                            btnOkLabel: 'delete',
-                            btnOkIcon: 'fas fa-fw fa-times',
+                            template: Util.getConfirmationTemplate(null, {
+                                size: 'small',
+                                noTitle: true
+                            }),
                             onConfirm : function(e, target){
                                 let deleteRowElement = $(cell).parents('tr');
                                 tempTableElement.api().rows(deleteRowElement).remove().draw();
@@ -1218,7 +1219,7 @@ define([
                     placement: 'top',
                     container: 'body',
                     content: content
-                }).data('bs.popover').tip().addClass('pf-popover');
+                }).data('bs.popover').tip().addClass(Util.config.popoverClass);
             });
 
             // set popup "close" observer
@@ -1239,10 +1240,10 @@ define([
                 popoverRoot.data('bs.popover').tip().find('a').on('click', function(){
                     // hint: "data" attributes should be in lower case!
                     let systemData = {
-                        systemId: $(this).data('systemid'),
+                        id: $(this).data('systemid'),
                         name: $(this).data('name')
                     };
-                    Util.setDestination(systemData, 'set_destination');
+                    Util.setDestination('set_destination', 'system', systemData);
 
                     // close popover
                     popoverRoot.popover('hide');

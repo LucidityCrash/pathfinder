@@ -15,6 +15,7 @@ body{
   cursor: default;
 }
 
+// links ==========================================================================================
 a, .pf-link{
   color: $teal;
   will-change: color;
@@ -30,14 +31,25 @@ a, .pf-link{
   &:focus{
     color: $teal;
   }
+
+  &.disabled{
+    color: $navbar-default-link-color;
+    pointer-events: none;
+    cursor: default;
+  }
 }
 
-em{
+em,
+.pf-font-italic{
   font-style: italic;
 
   &.pf-brand{
     text-transform: uppercase;
   }
+}
+
+.pf-font-uppercase{
+  text-transform: uppercase;
 }
 
 .pf-font-capitalize{
@@ -56,6 +68,15 @@ em{
   }
 }
 
+.fa-tree-child{
+  @extend .fa-fw;
+  @extend .fa-lg;
+  @extend .fa-level-up-alt;
+  @extend .fa-rotate-90;
+  color: $gray-light;
+  padding-right: 5px;
+}
+
 .no-scroll{
   overflow: hidden;
 }
@@ -66,6 +87,35 @@ em{
 
 .no-margin{
   margin: 0;
+}
+
+// show/hide by [data-attr] value =================================================================
+.pf-hidden-by-attr{
+  &[data-attr='']{
+    display: none;
+  }
+
+  &:not([data-attr='']){
+    display: initial;
+  }
+
+  &:before{
+    content: attr(data-attr) ' ' attr(data-attr-label);
+  }
+}
+
+.pf-shown-by-attr{
+  &[data-attr='']{
+    display: initial;
+  }
+
+  &:not([data-attr='']){
+    display: none;
+  }
+
+  &:before{
+    content: attr(data-attr) ' ' attr(data-attr-label);
+  }
 }
 
 // scroll bar (webkit only) =======================================================================
@@ -114,6 +164,20 @@ em{
   color: $gray-darkest;
 }
 
+.row{
+  // swap render order
+  &--reverse{
+    display: flex;
+    flex-direction: column-reverse;
+  }
+}
+
+// Flex layout ====================================================================================
+.pf-container-flex-end{
+  display: flex;
+  justify-content: flex-end;
+}
+
 // .well variants =================================================================================
 .well{
   &.well-text-number{
@@ -123,7 +187,15 @@ em{
     letter-spacing: .02em;
     line-height: 16px;
     text-rendering: geometricPrecision;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow: hidden;
   }
+}
+
+// .collapse ======================================================================================
+.collapse{
+  will-change: height;
 }
 
 // help elements ==================================================================================
@@ -141,6 +213,7 @@ em{
 
 .pf-help-default{
   cursor: help;
+  pointer-events: auto;   // enable mouse events even if a parent was set to 'none' (e.g. disabled xEditable cells in sig-reader dialog table)
   @include transition( color 0.08s ease-out );
 
   &:hover{
@@ -179,15 +252,30 @@ em{
   user-select: text;
 }
 
-// links ==========================================================================================
-a{
-  &.disabled{
-    color: $navbar-default-link-color;
-    pointer-events: none;
-    cursor: default;
-  }
+%pf-bg-image-wrapper{
+  background-size: contain;
+  background-origin: content-box;
+  background-repeat: no-repeat;
+  background-image: var(--bg-image);
+  background-position: bottom 0 right 0;
+  image-rendering: -webkit-optimize-contrast;
 }
 
+.pf-bg-icon-inline{
+  @extend %pf-bg-image-wrapper;
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  margin: -5px 5px;
+  outline: 1px solid;
+  outline-color: transparent;
+  outline-offset: 2px;
+  @include transition(outline-color 0.15s ease-out);
+
+  &:hover{
+    outline-color: $teal;
+  }
+}
 // alert messages =================================================================================
 .alert{
   will-change: opacity, transform;
@@ -195,10 +283,6 @@ a{
 
 // form fields custom styles ======================================================================
 .editable-input{
-
-  .pf-editable-name{
-    text-transform: uppercase;
-  }
 
   optgroup[label]{
     background-color: $gray;
@@ -230,6 +314,10 @@ a{
     .pf-editable-unknown[value='0'] + span {
       color: $red;
     }
+
+    .pf-editable-warn + span {
+      color: $orange;
+    }
   }
 }
 select:active, select:hover {
@@ -246,7 +334,7 @@ select:active, select:hover {
   // <optgroup> options
   .select2-results__options--nested{
     .select2-results__option{
-      padding-left: 15px;  // more padding for nested options
+      padding-left: 10px;  // more padding for nested options
     }
   }
 
@@ -254,6 +342,14 @@ select:active, select:hover {
     // smaller and less padding
     padding-left: 3px;
     padding-right: 3px;
+
+    &:first-child{
+      padding-left: 0;
+    }
+
+    &:last-child{
+      padding-right: 0;
+    }
   }
 
   .clearfix.pf-result-image [class*="col-"]{
@@ -283,6 +379,12 @@ select:active, select:hover {
   .dataTables_length select{
     margin: 0 3px;  // <select> for page size
     padding: 1px;
+  }
+
+  .pf-table-toolbar-status{
+    text-align: center;
+    line-height: 22px;
+    color: $gray-light;
   }
 
   .dt-buttons,
@@ -408,6 +510,10 @@ select:active, select:hover {
       font-size: 9px !important; // should not be "so big" (10px default)
     }
 
+    > .label{
+      font-size: 80%;
+    }
+
     &.pf-table-link-cell{
       cursor: pointer;
       @extend .txt-color;
@@ -436,6 +542,25 @@ select:active, select:hover {
       }
     }
 
+    &.pf-table-type-cell{
+      > span {
+        &:first-child{
+          display: inline-block;
+          width: 28px;
+        }
+        &:nth-child(2){
+          display: inline-block;
+          width: 22px;
+
+          kbd{
+            &:empty{
+              display: none;
+            }
+          }
+        }
+      }
+    }
+
     &.pf-table-image-cell{
       padding: 0 !important;
       image-rendering: -webkit-optimize-contrast;
@@ -459,11 +584,12 @@ select:active, select:hover {
 
     &.pf-table-image-smaller-cell{
       padding: 0 !important;
+      border-right: 1px solid transparent;
       img{
-        width: 25px; // smaller image (default 32)
+        width: 23px; // smaller image (default 32)
         // overwrite "default" border for image cells
-        border-left: 1px solid transparent;
-        border-right: 1px solid transparent;
+        //border-left: 1px solid transparent;
+        //border-right: 1px solid transparent;
       }
     }
 
@@ -589,12 +715,20 @@ table{
   }
 
   td, th{
+    &.separator-right{
+      border-right: 1px solid $gray-dark;
+    }
+
     &.pf-table-cell-10{
       width: 10px;
     }
 
     &.pf-table-cell-20{
       width: 20px;
+    }
+
+    &.pf-table-cell-50{
+      width: 50px;
     }
 
     &.pf-table-cell-100{
@@ -605,6 +739,61 @@ table{
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+
+    &.pf-table-cell-bg-image{
+      padding: 0 0 0 5px !important;
+      vertical-align: middle !important;
+      border-top-color: transparent !important;
+
+      .pf-table-cell-bg-image-wrapper{
+        @extend %pf-bg-image-wrapper;
+        display: block;
+        width: auto;
+        height: 40px;
+        padding: 2px 0;
+
+        &.smaller{
+          height: 30px;
+        }
+      }
+    }
+
+    &.pf-table-cell-chart{
+      position: relative;
+
+      svg.peity{
+        display: block;
+        position: absolute;
+        margin-top: -2px; // ugly fix
+      }
+    }
+
+    &.pf-table-cell-progress{
+      position: relative;
+
+      &:before{
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 0; // default if no --width var set
+        width: calc(var(--width) * 1%);
+        height: 1px;
+        border-top: 1px solid $blue;
+      }
+
+      &:after{
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 1px;
+        border-width: 0 2px;
+        border-style: solid;
+        border-color: $gray-lighter;
+      }
     }
   }
 }
@@ -664,24 +853,16 @@ table{
     width: 100%;
   }
 }
-.navbar-nav {
-  li:not(.disabled):not(.hide-before){
-    &:hover, &.active{
 
-      &:before{
-        top: -4px;
-        opacity: 1;
-      }
+.modal .navbar-nav {
+  li {
+    @include pf-navigation-indicator(top);
+  }
+}
 
-    }
-
-    &:before{
-      @include navigation-active-indicator(top);
-      width: 100%;
-      height: 2px;
-      top: 0;
-    }
-
+.navbar-fixed-top .navbar-nav {
+  li {
+    @include pf-navigation-indicator(bottom);
   }
 }
 
@@ -852,7 +1033,9 @@ table{
   padding-bottom: 40px; // space for footer
 
   >.pf-map-content-col:first-child{
-    padding-right: 0; // overwrite default
+    @media (min-width: $screen-md-min) {
+      padding-right: 0; // overwrite default
+    }
   }
 
   // all modules within a row
@@ -865,6 +1048,7 @@ table{
     will-change: height, transform, opacity;
     overflow: hidden;
     @include border-radius(5px);
+    border-top-left-radius: 0;
 
     &:before{
       content: '';
@@ -913,7 +1097,7 @@ table{
 
         // icons in headline
         .pf-module-icon-button{
-          margin-left: 5px;
+          margin-left: 3px;
         }
       }
     }
@@ -951,7 +1135,7 @@ table{
 
 // User status ====================================================================================
 .pf-user-status{
-  color: $red-darker;
+  color: $red-dark;
 }
 
 .pf-user-status-corp{
@@ -1137,6 +1321,10 @@ table{
   color: $yellow-dark;
 }
 
+.pf-system-sec-drifter{
+  color: $aqua;
+}
+
 // system status ==================================================================================
 
 .pf-system-status-friendly{
@@ -1313,7 +1501,7 @@ table{
   }
 
   &.pf-map-connection-wh-critical{
-    background-color: $red-darker;
+    background-color: $red-dark;
   }
 
   &.pf-map-connection-wh-size-s,
@@ -1373,7 +1561,7 @@ table{
 
     &:after{
       content: 'save mass';
-      background-color: $red-darker;
+      background-color: $red-dark;
       color: $gray-lightest;
       left: calc(50% - 28px);
     }
@@ -1399,7 +1587,7 @@ table{
   }
 
   &.pf-wh-critical{
-    background-color: $red-darker;
+    background-color: $red-dark;
     color: $black;
   }
 
@@ -1419,7 +1607,7 @@ table{
 }
 
 .pf-structure-status-offline{
-  color: $red-darker;
+  color: $red-dark;
 }
 
 // global tooltip settings ========================================================================
@@ -1501,6 +1689,64 @@ td.pf-popover-trigger{
   > [class~='alert']:last-of-type{
     margin-bottom: 0;
   }
+
+  &[data-resizebar]{
+    padding-bottom: 15px;
+
+    &:hover{
+      .pf-resizearea{
+        @include transition-delay(.15s);
+        height: 40px;
+        opacity: 1;
+      }
+
+      .pf-resizebar-bar{
+        border-top: 1px solid $orange !important;
+      }
+    }
+  }
+
+  &:not([data-resizebar]){
+    .pf-dynamic-area-resizebar{
+      display: none;
+    }
+  }
+
+  .pf-resizearea{
+    height: 0;
+    opacity: 0;
+    @include transition(height .12s ease-out, opacity .12s ease-out);
+    will-change: height, opacity;
+  }
+
+  .pf-dynamic-area-statusbar{
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    background-color: $gray-dark;
+    padding: 1px 0;
+
+    .pf-dynamic-area-resizebar{
+      width: 100%;
+      height: 9px;
+      padding-top: 1px;
+      cursor: ns-resize;
+
+      &:hover{
+        .pf-resizebar-bar{
+          border-top: 1px solid $orange;
+        }
+      }
+
+      .pf-resizebar-bar{
+        border-top: 1px solid $gray-light;
+        transition: border-top 0.15s ease-out;
+        width: 20px;
+        margin: 1px auto;
+      }
+    }
+  }
 }
 
 // code highlighting ==============================================================================
@@ -1554,7 +1800,7 @@ code {
 }
 
 // svg logo =======================================================================================
-#pf-logo-wrapper{
+.pf-logo-wrapper{
   display: block; // remove default height
 }
 

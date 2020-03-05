@@ -7,6 +7,8 @@ define([
     'app/init',
     'app/util',
     'app/key',
+    'app/lib/dragSelect',
+    'app/lib/eventHandler',
     'bootbox',
     'app/map/util',
     'app/map/contextmenu',
@@ -16,9 +18,8 @@ define([
     'app/map/layout',
     'app/map/magnetizing',
     'app/map/scrollbar',
-    'dragToSelect',
     'app/map/local'
-], ($, Init, Util, Key, bootbox, MapUtil, MapContextMenu, MapOverlay, MapOverlayUtil, System, Layout, Magnetizer, Scrollbar) => {
+], ($, Init, Util, Key, DragSelect, EventHandler, bootbox, MapUtil, MapContextMenu, MapOverlay, MapOverlayUtil, System, Layout, Magnetizer, Scrollbar) => {
 
     'use strict';
 
@@ -33,7 +34,6 @@ define([
         systemClass: 'pf-system',                                       // class for all systems
         systemActiveClass: 'pf-system-active',                          // class for an active system on a map
         systemSelectedClass: 'pf-system-selected',                      // class for selected systems on a map
-        systemLockedClass: 'pf-system-locked',                          // class for locked systems on a map
         systemHeadClass: 'pf-system-head',                              // class for system head
         systemHeadNameClass: 'pf-system-head-name',                     // class for system name
         systemHeadCounterClass: 'pf-system-head-counter',               // class for system user counter
@@ -546,13 +546,16 @@ define([
         system.data('region', data.region.name);
         system.data('constellationId', parseInt(data.constellation.id));
         system.data('constellation', data.constellation.name);
-        system.data('faction', data.faction);
         system.data('planets', data.planets);
         system.data('shattered', data.shattered);
+        system.data('drifter', data.drifter);
         system.data('statics', data.statics);
         system.data('updated', parseInt(data.updated.updated));
         system.data('changed', false);
         system.attr('data-mapid', parseInt(mapContainer.data('id')));
+        if(data.sovereignty){
+            system.data('sovereignty', data.sovereignty);
+        }
 
         // locked system
         if( Boolean(system.data('locked')) !== data.locked ){
@@ -641,7 +644,7 @@ define([
             case 'add_first_waypoint':
             case 'add_last_waypoint':
                 systemData = system.getSystemData();
-                Util.setDestination(systemData, action);
+                Util.setDestination(action, 'system', {id: systemData.systemId, name: systemData.name});
                 break;
         }
     };
@@ -660,19 +663,9 @@ define([
             case 'add_system':
                 // add new system dialog
                 let position = Layout.getEventCoordinates(e);
-
-                let grid = [MapUtil.config.mapSnapToGridDimension, MapUtil.config.mapSnapToGridDimension];
-                let positionFinder = new Layout.Position({
-                    container: mapElement[0],
-                    center: [position.x, position.y],
-                    loops: 5,
-                    defaultGapX: 10,
-                    defaultGapY: 10,
-                    grid: mapElement.hasClass(MapUtil.config.mapGridClass) ? grid : false,
-                    debug: false
+                let dimensions = MapUtil.newSystemPositionByCoordinates(mapElement, {
+                    center: [position.x, position.y]
                 });
-
-                let dimensions = positionFinder.findNonOverlappingDimensions(1, 8);
 
                 if(dimensions.length){
                     position.x = dimensions[0].left;
@@ -1116,6 +1109,8 @@ define([
             width = parseInt(width.substring(0, width.length - 2)) || 0;
             height = parseInt(height.substring(0, height.length - 2)) || 0;
 
+            mapWrapper.trigger('pf:mapResize');
+
             let promiseStore = MapUtil.getLocaleData('map', mapConfig.config.id );
             promiseStore.then((data) => {
                 let storeData = true;
@@ -1212,7 +1207,7 @@ define([
                 mapConfig.map.setContainer(mapContainer);
 
                 // init custom scrollbars and add overlay
-                parentElement.initMapScrollbar();
+                initMapScrollbar(mapWrapper);
 
                 // set map observer
                 setMapObserver(mapConfig.map);
@@ -1995,13 +1990,10 @@ define([
                 }
                 dragSystem.find('.' + config.systemHeadNameClass).editable('option', 'placement', placement);
 
-                // drag system is not always selected
-                let selectedSystems = mapContainer.getSelectedSystems().get();
-                selectedSystems = selectedSystems.concat(dragSystem.get());
-                selectedSystems = $.unique( selectedSystems );
-
-                // repaint connections (and overlays) -> just in case something fails...
-                revalidate(map, selectedSystems);
+                // update all dragged systems -> added to DragSelection
+                params.selection.forEach(elData => {
+                    MapUtil.markAsChanged($(elData[0]));
+                });
             }
         });
 
@@ -2119,7 +2111,7 @@ define([
 
         if( system.data('locked') === true ){
             system.data('locked', false);
-            system.removeClass( config.systemLockedClass );
+            system.removeClass(MapUtil.config.systemLockedClass);
 
             // enable draggable
             map.setDraggable(system, true);
@@ -2129,7 +2121,7 @@ define([
             }
         }else{
             system.data('locked', true);
-            system.addClass( config.systemLockedClass );
+            system.addClass(MapUtil.config.systemLockedClass);
 
             // enable draggable
             map.setDraggable(system, false);
@@ -2438,11 +2430,17 @@ define([
             });
         });
 
-        // init drag-frame selection
-        mapContainer.dragToSelect({
-            selectOnMove: true,
-            selectables: '.' + config.systemClass,
-            onHide: function(selectBox, deselectedSystems){
+        // init drag-frame selection ----------------------------------------------------------------------------------
+        let dragSelect = new DragSelect({
+            target: mapContainer[0],
+            selectables: '.' + config.systemClass + ':not(.' + MapUtil.config.systemLockedClass + '):not(.' + MapUtil.config.systemHiddenClass + ')',
+            selectedClass: MapUtil.config.systemSelectedClass,
+            selectBoxClass: 'pf-map-drag-to-select',
+            boundary: '.mCSB_container_wrapper',
+            onShow: () => {
+                Util.triggerMenuAction(document, 'Close');
+            },
+            onHide: (deselectedSystems) => {
                 let selectedSystems = mapContainer.getSelectedSystems();
 
                 if(selectedSystems.length > 0){
@@ -2451,22 +2449,18 @@ define([
 
                     // convert former group draggable systems so single draggable
                     for(let i = 0; i < selectedSystems.length; i++){
-                        map.addToDragSelection( selectedSystems[i] );
+                        map.addToDragSelection(selectedSystems[i]);
                     }
                 }
 
                 // convert former group draggable systems so single draggable
-                for(let j = 0; j < deselectedSystems.length; j++){
-                    map.removeFromDragSelection( deselectedSystems[j] );
+                for(let i = 0; i < deselectedSystems.length; i++){
+                    map.removeFromDragSelection(deselectedSystems[i]);
                 }
             },
-            onShow: function(){
-                Util.triggerMenuAction(document, 'Close');
-            },
-            onRefresh: function(){
-            }
+            debug: false,
+            debugEvents: false
         });
-
 
         // system body expand -----------------------------------------------------------------------------------------
         mapContainer.hoverIntent({
@@ -2708,7 +2702,7 @@ define([
 
                 if(select){
                     let mapWrapper = mapContainer.closest('.' + config.mapWrapperClass);
-                    Scrollbar.scrollToSystem(mapWrapper, MapUtil.getSystemPosition(system));
+                    Scrollbar.scrollToCenter(mapWrapper, system);
                     // select system
                     MapUtil.showSystemInfo(map, system);
                 }
@@ -3046,47 +3040,59 @@ define([
      */
     $.fn.getSystemData = function(minimal = false){
         let system = $(this);
+        let data = system.data();
 
         let systemData = {
-            id: parseInt(system.data('id')),
+            id: parseInt(data.id),
             updated: {
-                updated: parseInt(system.data('updated'))
+                updated: parseInt(data.updated)
             }
         };
 
         if(!minimal){
-            systemData = Object.assign(systemData, {
-                systemId: parseInt(system.data('systemId')),
-                name: system.data('name'),
+            let systemDataComplete = {
+                systemId: parseInt(data.systemId),
+                name: data.name,
                 alias: system.getSystemInfo(['alias']),
-                effect: system.data('effect'),
+                effect: data.effect,
                 type: {
-                    id: system.data('typeId')
+                    id: data.typeId
                 },
-                security: system.data('security'),
-                trueSec: system.data('trueSec'),
+                security: data.security,
+                trueSec: data.trueSec,
                 region: {
-                    id: system.data('regionId'),
-                    name: system.data('region')
+                    id: data.regionId,
+                    name: data.region
                 },
                 constellation: {
-                    id: system.data('constellationId'),
-                    name: system.data('constellation')
+                    id: data.constellationId,
+                    name: data.constellation
                 },
                 status: {
-                    id: system.data('statusId')
+                    id: data.statusId
                 },
-                locked: system.data('locked') ? 1 : 0,
-                rallyUpdated: system.data('rallyUpdated') || 0,
-                rallyPoke: system.data('rallyPoke') ? 1 : 0,
-                currentUser: system.data('currentUser'),        // if user is currently in this system
-                faction: system.data('faction'),
-                planets: system.data('planets'),
-                shattered: system.data('shattered') ? 1 : 0,
-                statics: system.data('statics'),
-                userCount: (system.data('userCount') ? parseInt(system.data('userCount')) : 0),
+                locked: data.locked ? 1 : 0,
+                rallyUpdated: data.rallyUpdated || 0,
+                rallyPoke: data.rallyPoke ? 1 : 0,
+                currentUser: data.currentUser, // if user is currently in this system
+                planets: data.planets,
+                shattered: data.shattered ? 1 : 0,
+                drifter: data.drifter ? 1 : 0,
+                statics: data.statics,
+                userCount: parseInt(data.userCount) || 0,
                 position: MapUtil.getSystemPosition(system)
-            });
+            };
+
+            let optionalDataKeys = ['sovereignty'];
+
+            for(let dataKey of optionalDataKeys){
+                let value = system.data(dataKey);
+                if(value !== null && value !== undefined){
+                    systemDataComplete[dataKey] = value;
+                }
+            }
+
+            systemData = Object.assign(systemData, systemDataComplete);
         }
 
         return systemData;
@@ -3166,17 +3172,41 @@ define([
 
     /**
      * init scrollbar for Map element
+     * @param mapWrapper
      */
-    $.fn.initMapScrollbar = function(){
-        // get Map Scrollbar
-        let mapTabContentElement = $(this);
-        let mapWrapperElement = mapTabContentElement.find('.' + config.mapWrapperClass);
-        let mapElement = mapTabContentElement.find('.' + config.mapClass);
+    let initMapScrollbar = mapWrapper => {
+        let mapElement = mapWrapper.find('.' + config.mapClass);
         let mapId = mapElement.data('id');
 
-        mapWrapperElement.initCustomScrollbar({
+        let dragSelect;
+        Scrollbar.initScrollbar(mapWrapper, {
             callbacks: {
                 onInit: function(){
+                    let scrollWrapper = this;
+
+                    // ++++++++++++++++++++++++++++++++++++++++++++++++++
+                    EventHandler.addEventListener(this, 'update:dragSelect', function(e){
+                        e.stopPropagation();
+                        dragSelect = e.detail;
+                        let intersection = dragSelect.getIntersection();
+                        let originData = dragSelect._selectBox.dataset.origin;
+                        let dragOrigin = originData ? originData.split('|', 2) : [];
+                        let position = [null, null];
+                        let inverseDirection = (directions, i) => directions[((i + 2) % directions.length + directions.length) % directions.length];
+
+                        let allDirections = ['top', 'right', 'bottom', 'left'];
+                        allDirections.forEach((direction, i, allDirections) => {
+                            if(dragOrigin.includes(direction) && intersection.includes(direction)){
+                                position[i % 2] = direction;
+                            }else if(dragOrigin.includes(direction) && intersection.includes(inverseDirection(allDirections, i))){
+                                // reverse scroll (e.g. 1. drag&select scroll bottom end then move back to top)
+                                position[i % 2] = inverseDirection(allDirections, i);
+                            }
+                        });
+
+                        Scrollbar.autoScroll(scrollWrapper, position);
+                    }, {capture: true});
+
                     // init 'space' key + 'mouse' down for map scroll -------------------------------------------------
                     let scrollStart = [0, 0];
                     let mouseStart = [0, 0];
@@ -3260,11 +3290,11 @@ define([
                         }
                     };
 
-                    this.addEventListener('keydown', keyDownHandler, { capture: false });
-                    this.addEventListener('keyup', keyUpHandler, { capture: false });
-                    this.addEventListener('mousemove', mouseMoveHandler, { capture: false });
-                    this.addEventListener('mousedown', mouseDownHandler, { capture: false });
-                    this.addEventListener('mouseup', mouseUpHandler, { capture: false });
+                    this.addEventListener('keydown', keyDownHandler, {capture: false});
+                    this.addEventListener('keyup', keyUpHandler, {capture: false});
+                    this.addEventListener('mousemove', mouseMoveHandler, {capture: false});
+                    this.addEventListener('mousedown', mouseDownHandler, {capture: false});
+                    this.addEventListener('mouseup', mouseUpHandler, {capture: false});
                 },
                 onScroll: function(){
                     // scroll complete
@@ -3284,6 +3314,11 @@ define([
 
                     // hide all system head tooltips
                     $(this).find('.' + config.systemHeadClass + ' .fa').tooltip('hide');
+                },
+                whileScrolling: function(){
+                    if(dragSelect){
+                        dragSelect.update();
+                    }
                 }
             }
         });
@@ -3291,8 +3326,8 @@ define([
         // ------------------------------------------------------------------------------------------------------------
         // add map overlays after scrollbar is initialized
         // because of its absolute position
-        mapWrapperElement.initMapOverlays();
-        mapWrapperElement.initLocalOverlay(mapId);
+        mapWrapper.initMapOverlays();
+        mapWrapper.initLocalOverlay(mapId);
     };
 
     return {

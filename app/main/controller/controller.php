@@ -16,6 +16,7 @@ use lib\db\SQL;
 use lib\Resource;
 use lib\Monolog;
 use lib\Util;
+use Model\AbstractModel;
 use Model\Pathfinder;
 use DB;
 
@@ -92,7 +93,10 @@ class Controller {
         }else{
             $this->initResource($f3);
 
-            $this->setTemplate( Config::getPathfinderData('view.index') );
+            $this->setTemplate(Config::getPathfinderData('view.index'));
+
+
+            $f3->set('tplImage', \lib\format\Image::instance());
         }
 
         return true;
@@ -164,7 +168,7 @@ class Controller {
             'font'      => $f3->get('BASE') . '/public/fonts',
             'document'  => $f3->get('BASE') . '/public/templates',
             'image'     => $f3->get('BASE') . '/public/img'
-        ]);
+        ], true);
 
         $resource->register('style', 'pathfinder');
 
@@ -176,6 +180,10 @@ class Controller {
         $resource->register('font', 'fa-regular-400');
         $resource->register('font', 'fa-solid-900');
         $resource->register('font', 'fa-brands-400');
+
+        $resource->register('url', self::getEnvironmentData('CCP_SSO_URL'), 'prerender');
+        $resource->register('url', Config::getPathfinderData('api.ccp_image_server'), 'dns-prefetch');
+        $resource->register('url', '//i.ytimg.com', 'dns-prefetch'); // YouTube tiny embed domain
 
         $f3->set('tplResource', $resource);
     }
@@ -381,13 +389,14 @@ class Controller {
     }
 
     /**
-     * get current character data from session
-     * @return array
+     * get current character from session data
+     * @param int $ttl
+     * @return Pathfinder\CharacterModel|null
      * @throws \Exception
      */
-    public function getSessionCharacterData() : array {
-        $data = [];
-        if($user = $this->getUser()){
+    protected function getSessionCharacter(int $ttl = AbstractModel::DEFAULT_SQL_TTL) : ?Pathfinder\CharacterModel {
+        $character = null;
+        if($user = $this->getUser($ttl)){
             $header = self::getRequestHeaders();
             $requestedCharacterId = (int)$header['Pf-Character'];
             if( !$this->getF3()->get('AJAX') ){
@@ -400,10 +409,10 @@ class Controller {
                 }
             }
 
-            $data = $user->getSessionCharacterData($requestedCharacterId);
+            $character = $user->getSessionCharacter($requestedCharacterId, $ttl);
         }
 
-        return $data;
+        return $character;
     }
 
     /**
@@ -412,24 +421,8 @@ class Controller {
      * @return Pathfinder\CharacterModel|null
      * @throws \Exception
      */
-    public function getCharacter(int $ttl = 0) : ?Pathfinder\CharacterModel {
-        $character = null;
-
-        if(!empty($characterData = $this->getSessionCharacterData())){
-            /**
-             * @var $characterModel Pathfinder\CharacterModel
-             */
-            $characterModel = Pathfinder\AbstractPathfinderModel::getNew('CharacterModel');
-            $characterModel->getById((int)$characterData['ID'], $ttl);
-            if(
-                !$characterModel->dry() &&
-                $characterModel->hasUserCharacter()
-            ){
-                $character = &$characterModel;
-            }
-        }
-
-        return $character;
+    public function getCharacter(int $ttl = AbstractModel::DEFAULT_SQL_TTL) : ?Pathfinder\CharacterModel {
+        return $this->getSessionCharacter($ttl);
     }
 
     /**
@@ -438,7 +431,7 @@ class Controller {
      * @return Pathfinder\UserModel|null
      * @throws \Exception
      */
-    public function getUser($ttl = 0) : ?Pathfinder\UserModel {
+    public function getUser($ttl = AbstractModel::DEFAULT_SQL_TTL) : ?Pathfinder\UserModel {
         $user = null;
 
         if($this->getF3()->exists(Api\User::SESSION_KEY_USER_ID, $userId)){
@@ -452,7 +445,7 @@ class Controller {
                 !$userModel->dry() &&
                 $userModel->hasUserCharacters()
             ){
-                $user = &$userModel;
+                $user = $userModel;
             }
         }
 
@@ -534,10 +527,11 @@ class Controller {
      * @throws \Exception
      */
     public function getEveServerStatus(\Base $f3){
+        $ttl = 60;
         $esiStatusVersion = 'latest';
         $cacheKey = 'eve_server_status';
 
-        if( !$f3->exists($cacheKey, $return) ){
+        if(!$exists = $f3->exists($cacheKey, $return)){
             $return = (object) [];
             $return->error = [];
 
@@ -593,10 +587,10 @@ class Controller {
                     // find top status
                     $status = 'OK';
                     $color = 'green';
-                    foreach($apiStatus['status'] as $statusData){
+                    foreach($apiStatus['status'] as &$statusData){
                         if('red' == $statusData['status']){
                             $status = 'unstable';
-                            $color = $statusData['status'];
+                            $color = $statusData['status'] = 'orange'; // red is already in use for fatal API errors (e.g. no response at all, or offline)
                             break;
                         }
                         if('yellow' == $statusData['status']){
@@ -613,9 +607,13 @@ class Controller {
                 }
 
                 if(empty($return->error)){
-                    $f3->set($cacheKey, $return, 60);
+                    $f3->set($cacheKey, $return, $ttl);
                 }
             }
+        }
+
+        if(empty($return->error)){
+            $f3->expire(Config::ttlLeft($exists, $ttl));
         }
 
         echo json_encode($return);
@@ -812,6 +810,26 @@ class Controller {
     protected function logActivities(){
         LogController::instance()->logActivities();
         Monolog::instance()->log();
+    }
+
+    /**
+     * simple counter with "static" store
+     * -> called within tpl render
+     * @return \Closure
+     */
+    protected function counter() : \Closure {
+        $store = [];
+
+        return function(string $action = 'increment', string $type = 'default', $val = 0) use (&$store){
+            $return = null;
+            switch($action){
+                case 'increment': $store[$type]++; break;
+                case 'add': $store[$type] += (int)$val; break;
+                case 'get': $return = $store[$type] ? : null; break;
+                case 'reset': unset($store[$type]); break;
+            }
+            return $return;
+        };
     }
 
     /**

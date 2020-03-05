@@ -7,8 +7,9 @@ define([
     'app/init',
     'app/util',
     'bootbox',
+    'app/counter',
     'app/map/util'
-], ($, Init, Util, bootbox, MapUtil) => {
+], ($, Init, Util, bootbox, Counter, MapUtil) => {
     'use strict';
 
     let config = {
@@ -189,7 +190,7 @@ define([
                             html: '<i class="fas fa-fw fa-question-circle"></i>'
                         }),
                         $('<td>', {
-                            text: scopeLabel.charAt(0).toUpperCase() + scopeLabel.slice(1)
+                            text: scopeLabel.capitalize()
                         }),
                         $('<td>', {
                             class: ['text-right', config.connectionInfoTableCellConnectionClass].join(' ')
@@ -774,7 +775,7 @@ define([
                             _: function(data, type, row){
                                 let value = data.typeId;
                                 if(type === 'display'){
-                                    value = '<img src="' + Init.url.ccpImageServer + '/Render/' + value + '_32.png" title="' + data.typeName + '" data-toggle="tooltip" />';
+                                    value = '<img src="' + Util.eveImageUrl('types', value) + '" title="' + data.typeName + '" data-toggle="tooltip" />';
                                 }
                                 return value;
                             }
@@ -794,7 +795,7 @@ define([
                             _: (cellData, type, rowData, meta) => {
                                 let value = cellData.name;
                                 if(type === 'display'){
-                                    value = '<img src="' + Init.url.ccpImageServer + '/Character/' + cellData.id + '_32.jpg" title="' + value + '" data-toggle="tooltip" />';
+                                    value = '<img src="' + Util.eveImageUrl('characters', cellData.id) + '" title="' + value + '" data-toggle="tooltip" />';
                                 }
                                 return value;
                             }
@@ -827,10 +828,7 @@ define([
                         title: 'log',
                         width: 55,
                         className: ['text-right', config.tableCellCounterClass].join(' '),
-                        data: 'created.created',
-                        createdCell: function(cell, cellData, rowData, rowIndex, colIndex){
-                            $(cell).initTimestampCounter('d');
-                        }
+                        data: 'created.created'
                     },{
                         targets: 5,
                         name: 'edit',
@@ -873,7 +871,7 @@ define([
                             display: data => {
                                 let val = '<i class="fas fa-plus"></i>';
                                 if(data){
-                                    val = '<i class="fas fa-times txt-color txt-color-redDarker"></i>';
+                                    val = '<i class="fas fa-times txt-color txt-color-redDark"></i>';
                                 }
                                 return val;
                             }
@@ -883,15 +881,11 @@ define([
 
                             if(rowData.active){
                                 let confirmationSettings = {
-                                    container: 'body',
-                                    placement: 'left',
-                                    btnCancelClass: 'btn btn-sm btn-default',
-                                    btnCancelLabel: 'cancel',
-                                    btnCancelIcon: 'fas fa-fw fa-ban',
                                     title: 'delete jump log',
-                                    btnOkClass: 'btn btn-sm btn-danger',
-                                    btnOkLabel: 'delete',
-                                    btnOkIcon: 'fas fa-fw fa-times',
+                                    template: Util.getConfirmationTemplate(null, {
+                                        size: 'small',
+                                        noTitle: true
+                                    }),
                                     onConfirm : function(e, target){
                                         // get current row data (important!)
                                         // -> "rowData" param is not current state, values are "on createCell()" state
@@ -935,6 +929,9 @@ define([
                         }
                     }
                 ],
+                initComplete: function(settings, json){
+                    Counter.initTableCounter(this, ['created:name']);
+                },
                 drawCallback: function(settings){
                     let animationRows = this.api().rows().nodes().to$().filter(function(a,b ){
                         return (

@@ -173,7 +173,7 @@ $btn-default-border:             darken($gray-light, 5%);
 
 $btn-primary-color:              $gray-lightest;
 $btn-primary-bg:                 $brand-primary;
-$btn-primary-border:             darken($btn-primary-bg, 5%);
+$btn-primary-border:             darken($btn-primary-bg, 2%);
 
 $btn-success-color:              $gray-lightest;
 $btn-success-bg:                 $brand-success;
@@ -546,7 +546,7 @@ $modal-title-padding:         14px;
 $modal-title-line-height:     $line-height-base;
 
 $modal-content-bg:                             $gray;
-$modal-content-border-color:                   rgba(0,0,0,.2);
+$modal-content-border-color:                   transparent;
 $modal-content-fallback-border-color:          #999;
 
 $modal-backdrop-bg:           #000;
@@ -688,6 +688,12 @@ $badge-font-weight:           bold;
 $badge-line-height:           1;
 $badge-border-radius:         10px;
 
+$badge-default-bg:            $gray-light;
+$badge-primary-bg:            $brand-primary;
+$badge-success-bg:            $brand-success;
+$badge-info-bg:               $brand-info;
+$badge-warning-bg:            $brand-warning;
+$badge-danger-bg:             $brand-danger;
 
 //== Breadcrumbs
 //
@@ -723,7 +729,7 @@ $carousel-caption-color:                      #fff;
 //##
 
 $close-font-weight:           bold;
-$close-color:                 $red-darker;
+$close-color:                 $red-dark;
 $close-text-shadow:           0 1px 0 #fff;
 
 
