@@ -329,6 +329,7 @@ abstract class AbstractClient extends \Prefab {
             $client = $this->getClient($f3);
             $client->setTimeout(5);
             $client->setConnectTimeout(5);
+            $client->setReadTimeout(30);
             $client->setUserAgent($this->getUserAgent());
             $client->setDecodeContent('gzip, deflate');
 
